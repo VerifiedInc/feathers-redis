@@ -12,7 +12,7 @@ jobs:
       # Label used to access the service container
       redis:
         # Docker Hub image
-        image: redis
+        image: redis/redis-stack-server
         # Set health checks to wait until redis has started
         options: >-
           --health-cmd "redis-cli ping"
