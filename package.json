@@ -1,0 +1,74 @@
+{
+  "name": "@verifiedinc/feathers-redis",
+  "description": "A service adapter for Redis-OM",
+  "version": "0.0.1",
+  "main": "lib/",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "prepublish": "npm run compile",
+    "pack": "npm pack --pack-destination ./build",
+    "compile": "shx rm -rf lib/ && tsc",
+    "test": "mocha --config .mocharc.json --recursive test/**.test.ts test/**/*.test.ts"
+  },
+  "author": {
+    "name": "Leonardo Adriano",
+    "email": "leo.adriano1994@gmail.com",
+    "url": "https://github.com/leo1994"
+  },
+  "repository": {
+    "url": "git+ssh://git@github.com/VerifiedInc/feathers-redis.git",
+    "type": "git"
+  },
+  "engines": {
+    "node": ">= 20"
+  },
+  "license": "MIT",
+  "keywords": [
+    "feathers",
+    "feathers-plugin",
+    "REST",
+    "Socket.io",
+    "realtime",
+    "redis",
+    "service"
+  ],
+  "files": [
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "lib/**",
+    "src/**",
+    "*.d.ts",
+    "*.js"
+  ],
+  "dependencies": {
+    "@feathersjs/adapter-commons": "^5.0.31",
+    "@feathersjs/commons": "^5.0.31",
+    "@feathersjs/errors": "^5.0.31"
+  },
+  "devDependencies": {
+    "@feathersjs/adapter-tests": "^5.0.31",
+    "@feathersjs/schema": "^5.0.31",
+    "@types/mocha": "^10.0.9",
+    "@types/node": "^22.9.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-config-standard-with-typescript": "^43.0.1",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-n": "^16.6.2",
+    "eslint-plugin-prettier": "^5.1.3",
+    "eslint-plugin-promise": "^6.1.1",
+    "mocha": "^10.8.2",
+    "shx": "^0.3.4",
+    "prettier": "^3.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  },
+  "peerDependencies": {
+    "redis-om": "^0.4.7"
+  }
+}
