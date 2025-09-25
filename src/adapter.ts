@@ -39,6 +39,7 @@ export class RedisAdapter<
   PatchData = Partial<Data>,
 > extends AdapterBase<Result, Data, PatchData, ServiceParams, RedisAdapterOptions> {
   repository: Repository<Result>;
+  expiration: number | undefined;
 
   /**
    * Constructor for the RedisAdapter class.
@@ -57,6 +58,9 @@ export class RedisAdapter<
     });
 
     this.repository = new Repository<Result>(options.schema, options.Model);
+
+    // Set expiration time if provided in options
+    this.expiration = options.expiration;
 
     // If you change your schema, no worries. Redis OM will automatically rebuild the index for you.
     // Just call .createIndex again. And don't worry if you call .createIndex when your schema hasn't changed.
@@ -352,6 +356,10 @@ export class RedisAdapter<
             delete entity[key];
           }
         }
+      }
+      // Set expiration if defined in options
+      if (this.expiration) {
+        await this.expire(entity, this.expiration);
       }
       return entity;
     } catch (error) {

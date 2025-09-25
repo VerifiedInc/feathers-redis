@@ -7,6 +7,7 @@ import {
 export interface RedisAdapterOptions extends AdapterServiceOptions {
   Model: RedisConnection;
   schema?: Schema;
+  expiration?: number;
 }
 
 export interface RedisAdapterParams<Q = AdapterQuery>
