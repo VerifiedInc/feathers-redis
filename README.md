@@ -322,6 +322,37 @@ await sessionService.expire(session.sessionId, 7200);
 
 For more details and ongoing discussion, see the [Feathers Redis Issue #4](https://github.com/feathersjs-ecosystem/feathers-redis/issues/4).
 
+## Publishing and Release Process
+
+This package uses an automated release workflow similar to Axios:
+
+### How to Release
+
+1. **Create a GitHub Release**:
+   - Go to [GitHub Releases](https://github.com/VerifiedInc/feathers-redis/releases)
+   - Click "Create a new release"
+   - Set tag version (e.g., `v1.0.0`)
+   - Add release notes
+
+2. **Automated PR Creation**:
+   - GitHub automatically creates a PR with the version bump
+   - The PR updates `package.json` with the new version
+   - Review the PR to ensure everything looks correct
+
+3. **Publish to npm**:
+   - Merge the PR to `main`
+   - GitHub automatically publishes to npm with provenance
+   - Uses GitHub OIDC (Trusted Publisher) for secure authentication
+
+### Workflow Details
+
+- **Release PR Workflow** (`.github/workflows/release-pr.yml`): Creates PR when release is created
+- **Publish Workflow** (`.github/workflows/publish.yml`): Publishes to npm when `package.json` version changes on main
+- **Security**: Uses GitHub as Trusted Publisher (no npm tokens needed)
+- **Provenance**: All packages published with attestation for supply chain security
+
+This ensures a clean separation between version management and publishing, with full audit trail.
+
 ## License
 
 Licensed under the [MIT license](LICENSE).
