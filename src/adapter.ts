@@ -340,6 +340,14 @@ export class RedisAdapter<
             }
           });
         }
+        const expiration = this.expiration;
+        if (expiration) {
+          await Promise.all(
+            results.map(async (entity) => {
+              await this.expire(entity, expiration);
+            }),
+          );
+        }
         return results;
       }
       const uuid = randomUUID();
@@ -399,6 +407,10 @@ export class RedisAdapter<
       const entity = await this._get(id, params);
       Object.assign(entity, data);
       await this.repository.save(entity);
+      // Refresh expiration if explicitly requested in params and expiration is configured
+      if (this.expiration && params.refreshExpiration) {
+        await this.expire(id as string, this.expiration);
+      }
       return entity;
     } catch (error) {
       if (error instanceof RedisOmError) {
@@ -454,6 +466,10 @@ export class RedisAdapter<
             delete entity[key];
           }
         }
+      }
+      // Refresh expiration if explicitly requested in params and expiration is configured
+      if (this.expiration && _params.refreshExpiration) {
+        await this.expire(id, this.expiration);
       }
       return entity;
     } catch (error) {

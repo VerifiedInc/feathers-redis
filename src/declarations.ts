@@ -10,5 +10,6 @@ export interface RedisAdapterOptions extends AdapterServiceOptions {
   expiration?: number;
 }
 
-export interface RedisAdapterParams<Q = AdapterQuery>
-  extends AdapterParams<Q, Partial<RedisAdapterOptions>> {}
+export interface RedisAdapterParams<Q = AdapterQuery> extends AdapterParams<Q, Partial<RedisAdapterOptions>> {
+  refreshExpiration?: boolean;
+}
