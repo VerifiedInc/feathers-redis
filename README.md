@@ -159,23 +159,136 @@ export const getOptions = (app: Application): RedisAdapterOptions => {
 };
 ```
 
-### Setting an Expiration Time
+## Expiration Management
 
-You can also set an expiration time for records. For example, to expire a message after one day:
+This adapter provides comprehensive expiration management features to automatically expire records after a specified time.
+
+### Default Expiration Configuration
+
+Set a default expiration time for all records created by a service:
 
 ```typescript
-// Creating a new message and setting an expiration time in seconds (24 hours)
+export const getOptions = (app: Application): RedisAdapterOptions => {
+  return {
+    paginate: app.get('paginate'),
+    Model: app.get('redisClient'),
+    expiration: 3600, // 1 hour in seconds
+    schema: new Schema('messages', {
+      id: { type: 'string' },
+      text: { type: 'string' },
+      userId: { type: 'string' },
+      createdAt: { type: 'number' },
+    }),
+  };
+};
+```
+
+With default expiration configured:
+
+- **Single records**: Automatically get expiration set on create
+- **Batch records**: All items in batch creation get expiration (requires `multi: ['create']`)
+
+```typescript
+// Single create - automatically expires after 1 hour
 const message = await app.service('messages').create({
   text: 'Hello world',
   userId: '123',
   createdAt: Date.now(),
 });
 
-// Set expiration time for the message (in seconds)
-await app.service('messages').expire(message.id, 60 * 60 * 24);
+// Batch create - all items automatically expire after 1 hour
+const messages = await app.service('messages').create(
+  [
+    { text: 'Message 1', userId: '123', createdAt: Date.now() },
+    { text: 'Message 2', userId: '456', createdAt: Date.now() },
+  ],
+  { provider: undefined },
+); // Requires multi: ['create'] in service options
 ```
 
-> **Note:** It would be nice to set a default expiration time for all messages in the service options in future releases.
+### Manual Expiration Control
+
+Override or set expiration for individual records:
+
+```typescript
+// Set custom expiration time (24 hours)
+await app.service('messages').expire(message.id, 60 * 60 * 24);
+
+// Set expiration using the entity object
+await app.service('messages').expire(message, 60 * 60 * 24);
+```
+
+### Expiration Refresh on Updates
+
+Control whether expiration times are refreshed during update/patch operations:
+
+```typescript
+// Update WITH expiration refresh (resets expiration to default time)
+await app.service('messages').update(id, updatedData, {
+  refreshExpiration: true,
+});
+
+// Update WITHOUT expiration refresh (preserves original expiration)
+await app.service('messages').update(id, updatedData);
+
+// Patch WITH expiration refresh
+await app.service('messages').patch(id, patchData, {
+  refreshExpiration: true,
+});
+
+// Patch WITHOUT expiration refresh (default behavior)
+await app.service('messages').patch(id, patchData);
+```
+
+### Expiration Scenarios
+
+| Operation  | Default Behavior                   | With `refreshExpiration: true`     |
+| ---------- | ---------------------------------- | ---------------------------------- |
+| `create()` | ✅ Sets expiration (if configured) | N/A                                |
+| `update()` | ❌ No expiration change            | ✅ Refreshes to default expiration |
+| `patch()`  | ❌ No expiration change            | ✅ Refreshes to default expiration |
+
+### Complete Service Example with Expiration
+
+```typescript
+export const getOptions = (app: Application): RedisAdapterOptions => {
+  return {
+    paginate: app.get('paginate'),
+    Model: app.get('redisClient'),
+    expiration: 1800, // 30 minutes default expiration
+    multi: ['create'], // Enable batch operations
+    schema: new Schema('sessions', {
+      sessionId: { type: 'string' },
+      userId: { type: 'string' },
+      data: { type: 'string' },
+      createdAt: { type: 'number' },
+    }),
+  };
+};
+
+// Usage examples:
+const sessionService = app.service('sessions');
+
+// Create session with 30-minute expiration
+const session = await sessionService.create({
+  sessionId: 'sess_123',
+  userId: 'user_456',
+  data: JSON.stringify({ theme: 'dark' }),
+  createdAt: Date.now(),
+});
+
+// Update session and refresh expiration to another 30 minutes
+await sessionService.patch(
+  session.sessionId,
+  {
+    data: JSON.stringify({ theme: 'light' }),
+  },
+  { refreshExpiration: true },
+);
+
+// Set custom expiration (2 hours)
+await sessionService.expire(session.sessionId, 7200);
+```
 
 ## Limitations
 
@@ -198,12 +311,12 @@ await app.service('messages').expire(message.id, 60 * 60 * 24);
 
 ## Future Improvements & Nice-to-Have Features
 
-- **Default Expiration Settings:** Add an option to set a default expiration time for all messages within the service options.
 - **Nested Object Support:** Investigate ways to support queries on nested objects.
 - **Enhanced Batch Operations:** Explore alternatives or workarounds for multi remove/patch operations to avoid looping over individual items.
 - **Improved Index Management:** Provide utility functions to manage indexes more easily.
-- **Documentation:** Expand documentation to cover all features and provide more examples.
-- **Testing:** Implement comprehensive unit and integration tests to ensure reliability and performance.
+- **Advanced Expiration Features:** Add support for custom expiration callbacks, expiration events, and conditional expiration logic.
+- **Performance Optimizations:** Implement connection pooling and query optimization strategies.
+- **Enhanced Documentation:** Add more real-world examples and integration guides.
 
 ## Reference
 

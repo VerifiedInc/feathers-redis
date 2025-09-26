@@ -39,6 +39,7 @@ export class RedisAdapter<
   PatchData = Partial<Data>,
 > extends AdapterBase<Result, Data, PatchData, ServiceParams, RedisAdapterOptions> {
   repository: Repository<Result>;
+  expiration: number | undefined;
 
   /**
    * Constructor for the RedisAdapter class.
@@ -57,6 +58,9 @@ export class RedisAdapter<
     });
 
     this.repository = new Repository<Result>(options.schema, options.Model);
+
+    // Set expiration time if provided in options
+    this.expiration = options.expiration;
 
     // If you change your schema, no worries. Redis OM will automatically rebuild the index for you.
     // Just call .createIndex again. And don't worry if you call .createIndex when your schema hasn't changed.
@@ -336,6 +340,14 @@ export class RedisAdapter<
             }
           });
         }
+        const expiration = this.expiration;
+        if (expiration) {
+          await Promise.all(
+            results.map(async (entity) => {
+              await this.expire(entity, expiration);
+            }),
+          );
+        }
         return results;
       }
       const uuid = randomUUID();
@@ -352,6 +364,10 @@ export class RedisAdapter<
             delete entity[key];
           }
         }
+      }
+      // Set expiration if defined in options
+      if (this.expiration) {
+        await this.expire(entity, this.expiration);
       }
       return entity;
     } catch (error) {
@@ -391,6 +407,10 @@ export class RedisAdapter<
       const entity = await this._get(id, params);
       Object.assign(entity, data);
       await this.repository.save(entity);
+      // Refresh expiration if explicitly requested in params and expiration is configured
+      if (this.expiration && params.refreshExpiration) {
+        await this.expire(id as string, this.expiration);
+      }
       return entity;
     } catch (error) {
       if (error instanceof RedisOmError) {
@@ -446,6 +466,10 @@ export class RedisAdapter<
             delete entity[key];
           }
         }
+      }
+      // Refresh expiration if explicitly requested in params and expiration is configured
+      if (this.expiration && _params.refreshExpiration) {
+        await this.expire(id, this.expiration);
       }
       return entity;
     } catch (error) {
