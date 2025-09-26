@@ -1,7 +1,7 @@
 {
   "name": "@verifiedinc/feathers-redis",
   "description": "A service adapter for Redis-OM",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "main": "lib/",
   "publishConfig": {
     "access": "public",
