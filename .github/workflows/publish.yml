@@ -1,11 +1,10 @@
 name: Publish Package
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches:
       - main
-    paths:
-      - 'package.json'
 
 permissions:
   id-token: write # Required for OIDC
@@ -14,6 +13,24 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
+
+    # Service containers to run with `container-job`
+    services:
+      # Label used to access the service container
+      redis:
+        # Docker Hub image
+        image: redis/redis-stack-server
+        # Set health checks to wait until redis has started
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          # Maps port 6379 on service container to the host
+          - 6379:6379
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +45,12 @@ jobs:
       - run: npm ci
       - run: npm run compile --if-present
       - run: npm test
+        env:
+          CI: true
+          # The hostname used to communicate with the Redis service container
+          REDIS_HOST: localhost
+          # The default Redis port
+          REDIS_PORT: 6379
 
       - name: Check if version changed
         id: version-check
