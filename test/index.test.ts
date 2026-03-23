@@ -531,4 +531,86 @@ describe('Feathers Redis Service', () => {
       }
     });
   });
+
+  describe('Create with custom ID', () => {
+    it('should create an entity using the id provided in data', async () => {
+      const customId = 'custom-id-123';
+      const created = await app.service('people').create({
+        uuid: customId,
+        name: 'Custom ID User',
+        age: 30,
+        friends: [],
+        team: 'TeamA',
+      });
+
+      assert.equal(created.uuid, customId);
+      assert.equal(created.name, 'Custom ID User');
+
+      const retrieved = await app.service('people').get(customId);
+      assert.equal(retrieved.uuid, customId);
+      assert.equal(retrieved.name, 'Custom ID User');
+    });
+
+    it('should overwrite an existing entity when creating with the same id', async () => {
+      const customId = 'overwrite-id-456';
+      await app.service('people').create({
+        uuid: customId,
+        name: 'Original User',
+        age: 25,
+        friends: [],
+        team: 'TeamA',
+      });
+
+      const overwritten = await app.service('people').create({
+        uuid: customId,
+        name: 'Overwritten User',
+        age: 35,
+        friends: ['friend1'],
+        team: 'TeamB',
+      });
+
+      assert.equal(overwritten.uuid, customId);
+      assert.equal(overwritten.name, 'Overwritten User');
+      assert.equal(overwritten.age, 35);
+
+      const retrieved = await app.service('people').get(customId);
+      assert.equal(retrieved.name, 'Overwritten User');
+      assert.equal(retrieved.age, 35);
+    });
+
+    it('should create entities with custom ids in batch', async () => {
+      const created = (await app.service('people').create(
+        [
+          { uuid: 'batch-custom-1', name: 'Batch 1', age: 20, friends: [], team: 'A' },
+          { uuid: 'batch-custom-2', name: 'Batch 2', age: 21, friends: [], team: 'B' },
+        ],
+        { provider: undefined },
+      )) as Person[];
+
+      assert.equal(created[0].uuid, 'batch-custom-1');
+      assert.equal(created[1].uuid, 'batch-custom-2');
+
+      const [r1, r2] = await Promise.all([
+        app.service('people').get('batch-custom-1'),
+        app.service('people').get('batch-custom-2'),
+      ]);
+      assert.equal(r1.name, 'Batch 1');
+      assert.equal(r2.name, 'Batch 2');
+    });
+
+    it('should generate a random id when none is provided in data', async () => {
+      const created = await app.service('people').create({
+        name: 'Auto ID User',
+        age: 28,
+        friends: [],
+        team: 'TeamC',
+      });
+
+      assert.ok(created.uuid);
+      assert.equal(created.name, 'Auto ID User');
+
+      const retrieved = await app.service('people').get(created.uuid);
+      assert.equal(retrieved.name, 'Auto ID User');
+    });
+  });
 });

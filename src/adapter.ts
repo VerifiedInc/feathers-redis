@@ -322,7 +322,7 @@ export class RedisAdapter<
       if (Array.isArray(data)) {
         const results = await Promise.all(
           data.map(async (item: Data) => {
-            const uuid = randomUUID();
+            const uuid = (item as any)?.[idField ?? 'entityId'] ?? randomUUID();
             return await this.repository.save(uuid, {
               [idField ?? 'entityId']: uuid,
               ...item,
@@ -350,7 +350,7 @@ export class RedisAdapter<
         }
         return results;
       }
-      const uuid = randomUUID();
+      const uuid = (data as any)?.[idField ?? 'entityId'] ?? randomUUID();
       const entity = await this.repository.save(uuid, {
         [idField ?? 'entityId']: uuid,
         ...data,
