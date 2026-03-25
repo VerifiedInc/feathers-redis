@@ -1,7 +1,6 @@
 name: Publish Package
 
 on:
-  workflow_dispatch:
   pull_request:
     types: [closed]
     branches:
@@ -10,12 +9,11 @@ on:
 permissions:
   id-token: write # Required for OIDC
   contents: read
-  packages: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
 
     # Service containers to run with `container-job`
     services:
@@ -41,7 +39,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: https://registry.npmjs.org
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Update npm
         run: npm install -g npm@latest
@@ -56,25 +54,17 @@ jobs:
           # The default Redis port
           REDIS_PORT: 6379
 
-      # - name: Check if version changed
-      #   id: version-check
-      #   run: |
-      #     if git diff HEAD~1 HEAD --name-only | grep -q "package.json"; then
-      #       NEW_VERSION=$(node -p "require('./package.json').version")
-      #       echo "version-changed=true" >> $GITHUB_OUTPUT
-      #       echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
-      #     else
-      #       echo "version-changed=false" >> $GITHUB_OUTPUT
-      #     fi
-
-      # - name: Publish to npm
-      #   if: steps.version-check.outputs.version-changed == 'true'
-      #   run: npm publish --provenance --access public
-
-      - name: Publish to GitHub Packages
-        # if: steps.version-check.outputs.version-changed == 'true'
+      - name: Check if version changed
+        id: version-check
         run: |
-          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
-          npm publish --registry=https://npm.pkg.github.com --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if git diff HEAD~1 HEAD --name-only | grep -q "package.json"; then
+            NEW_VERSION=$(node -p "require('./package.json').version")
+            echo "version-changed=true" >> $GITHUB_OUTPUT
+            echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "version-changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to npm
+        if: steps.version-check.outputs.version-changed == 'true'
+        run: npm publish --provenance --access public
