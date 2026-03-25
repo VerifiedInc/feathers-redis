@@ -73,6 +73,8 @@ jobs:
 
       - name: Publish to GitHub Packages
         # if: steps.version-check.outputs.version-changed == 'true'
-        run: npm publish --registry=https://npm.pkg.github.com --access private
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          npm publish --registry=https://npm.pkg.github.com --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
