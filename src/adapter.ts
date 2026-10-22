@@ -24,6 +24,23 @@ const METHODS = {
 };
 
 /**
+ * Remove `*` from string values so an equality stays an exact match. An unescaped `*`
+ * reaches the search index as a prefix wildcard and would match by prefix. Exact match
+ * fields like hashes, codes and uuids never contain `*`, so their queries are unchanged.
+ */
+const stripRedisWildcard = <T>(value: T): T => {
+  if (typeof value === 'string') {
+    return value.replace(/\*/g, '') as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => stripRedisWildcard(item)) as T;
+  }
+
+  return value;
+};
+
+/**
  * RedisAdapter class extends the AdapterBase class to provide a Redis-based
  * implementation for FeathersJS services.
  *
@@ -136,13 +153,19 @@ export class RedisAdapter<
              * If the method is $ne, we need to use the `.not.equals` method and trying to use [method] will throw an error.
              */
             if (method === METHODS.$ne) {
-              search.where(column as Exclude<keyof Result, keyof EntityInternal>).not.equals(value);
+              search
+                .where(column as Exclude<keyof Result, keyof EntityInternal>)
+                .not.equals(stripRedisWildcard(value));
             } else {
-              (search.where(column as Exclude<keyof Result, keyof EntityInternal>) as any)[method](value);
+              (search.where(column as Exclude<keyof Result, keyof EntityInternal>) as any)[method](
+                stripRedisWildcard(value),
+              );
             }
           } else {
             // If the method is not in the METHODS object, use the method as equals
-            search.where(column as Exclude<keyof Result, keyof EntityInternal>).equals(value);
+            search
+              .where(column as Exclude<keyof Result, keyof EntityInternal>)
+              .equals(stripRedisWildcard(value));
           }
         }
       }

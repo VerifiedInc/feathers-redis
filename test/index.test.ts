@@ -613,4 +613,30 @@ describe('Feathers Redis Service', () => {
       assert.equal(retrieved.name, 'Auto ID User');
     });
   });
+
+  describe('RediSearch wildcard neutralization', () => {
+    beforeEach(async () => {
+      await app.service('people').create({ uuid: 'wc-alpha', name: 'alpha', age: 1, friends: [] });
+      await app.service('people').create({ uuid: 'wc-alphabet', name: 'alphabet', age: 2, friends: [] });
+    });
+
+    it('does not let a trailing wildcard prefix match other rows', async () => {
+      const result = (await app.service('people').find({
+        query: { name: 'alph*' },
+        paginate: false,
+      })) as Person[];
+
+      assert.strictEqual(result.length, 0);
+    });
+
+    it('still returns the exact match', async () => {
+      const result = (await app.service('people').find({
+        query: { name: 'alpha' },
+        paginate: false,
+      })) as Person[];
+
+      assert.strictEqual(result.length, 1);
+      assert.strictEqual(result[0].name, 'alpha');
+    });
+  });
 });
