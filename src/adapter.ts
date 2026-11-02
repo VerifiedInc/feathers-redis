@@ -105,7 +105,7 @@ export class RedisAdapter<
     const type = field ? this.options.schema?.fieldByName(field)?.type : undefined;
 
     if (type === 'number' || type === 'number[]') {
-      if (typeof value === 'number') {
+      if (typeof value === 'number' && Number.isFinite(value)) {
         return value;
       }
 
@@ -125,7 +125,16 @@ export class RedisAdapter<
     }
 
     if (type === 'date') {
-      if (value instanceof Date || typeof value === 'number' || typeof value === 'string') {
+      if (value instanceof Date && Number.isFinite(value.getTime())) {
+        return value;
+      }
+
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+
+      // redis-om parses date strings with new Date(value)
+      if (typeof value === 'string' && Number.isFinite(new Date(value).getTime())) {
         return value;
       }
 

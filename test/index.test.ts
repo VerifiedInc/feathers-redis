@@ -756,6 +756,12 @@ describe('Feathers Redis Service', () => {
         await assert.rejects(findNames({ age: { $in: [1, 2] } }), numberError);
       });
 
+      it('rejects NaN and infinities', async () => {
+        for (const value of [NaN, Infinity, -Infinity]) {
+          await assert.rejects(findNames({ age: { $gt: value } }), numberError, String(value));
+        }
+      });
+
       it('still accepts numbers and numeric strings', async () => {
         assert.deepStrictEqual(await findNames({ age: 2 }), ['alphabet']);
         assert.deepStrictEqual(await findNames({ age: '2' }), ['alphabet']);
@@ -830,6 +836,12 @@ describe('Feathers Redis Service', () => {
         const breakout = ['0 +inf])) | ((@joinedAt:[0'];
 
         await assert.rejects(findMemberNames({ name: 'on', joinedAt: { $gte: breakout } }), dateError);
+      });
+
+      it('rejects invalid dates, NaN and infinities', async () => {
+        for (const value of ['not a date', new Date('not a date'), NaN, Infinity, -Infinity]) {
+          await assert.rejects(findMemberNames({ joinedAt: { $gt: value } }), dateError, String(value));
+        }
       });
 
       it('still accepts dates, numbers and date strings', async () => {
