@@ -299,7 +299,7 @@ redis-om does not escape every value it puts in a RediSearch query, so the adapt
 - `boolean`: `true`, `false`, `'true'` or `'false'`
 - `date`: a valid `Date`, a date string that parses, or a finite number of Unix seconds, not milliseconds (for example `Date.now() / 1000`)
 
-The id in `get`, `patch`, `update` and `remove` gets the same check when the call has a query, because the id then becomes part of the search.
+The id in `get`, `patch`, `update` and `remove` gets the same check when the call has a query, because the id then becomes part of the search. `get`, `patch` and `remove` report a failed check as `NotFound`, the same as any lookup that matches nothing.
 
 ## Limitations
 
