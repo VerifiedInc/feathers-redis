@@ -290,6 +290,17 @@ await sessionService.patch(
 await sessionService.expire(session.sessionId, 7200);
 ```
 
+## Query Values
+
+redis-om does not escape every value it puts in a RediSearch query, so the adapter checks each query value against its field type first and rejects anything that could be read as query syntax with a `BadRequest`:
+
+- `string`: no `*` (RediSearch reads it as a wildcard)
+- `number`: a number or a numeric string such as `'42'`
+- `boolean`: `true`, `false`, `'true'` or `'false'`
+- `date`: a `Date`, a number or a date string
+
+The id in `get`, `patch`, `update` and `remove` gets the same check when the call has a query, because the id then becomes part of the search.
+
 ## Limitations
 
 - The current implementation does not support nested objects. This means that if you try to query a nested object, it will not work as expected.
