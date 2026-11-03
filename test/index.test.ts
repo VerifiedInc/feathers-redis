@@ -613,4 +613,295 @@ describe('Feathers Redis Service', () => {
       assert.equal(retrieved.name, 'Auto ID User');
     });
   });
+
+  describe('Query value checks', () => {
+    const wildcardError = { name: 'BadRequest', message: 'Invalid query value: "*" is not allowed' };
+    const numberError = { name: 'BadRequest', message: 'Invalid query value: expected a number' };
+    const booleanError = { name: 'BadRequest', message: 'Invalid query value: expected a boolean' };
+    const dateError = { name: 'BadRequest', message: 'Invalid query value: expected a date' };
+
+    // _find skips the query validator hook, so these reach the adapter the way an internal call does
+    const findNames = async (query: Record<string, any>): Promise<string[]> => {
+      const result: any = await app.service('people')._find({ query, paginate: false });
+
+      return result.map((person: Person) => person.name).sort();
+    };
+
+    beforeEach(async () => {
+      await app.service('people').create({ uuid: 'qv-alpha', name: 'alpha', age: 1, friends: [] });
+      await app.service('people').create({ uuid: 'qv-alphabet', name: 'alphabet', age: 2, friends: [] });
+      await app.service('people').create({ uuid: 'qv-alpha-star', name: 'alpha*', age: 3, friends: [] });
+    });
+
+    describe('string fields', () => {
+      for (const name of ['alph*', 'alpha*', '*bet', 'al*ha', '*lph*', '*', '**']) {
+        it(`rejects "${name}" instead of matching it as a wildcard`, async () => {
+          await assert.rejects(
+            app.service('people').find({ query: { name }, paginate: false }),
+            wildcardError,
+          );
+        });
+      }
+
+      it('rejects a wildcard in $ne', async () => {
+        await assert.rejects(
+          app.service('people').find({ query: { name: { $ne: 'alph*' } }, paginate: false }),
+          wildcardError,
+        );
+      });
+
+      it('rejects a wildcard in $in', async () => {
+        await assert.rejects(
+          app.service('people').find({ query: { name: { $in: ['alpha', 'alph*'] } }, paginate: false }),
+          wildcardError,
+        );
+      });
+
+      it('rejects a wildcard in $or', async () => {
+        await assert.rejects(
+          app
+            .service('people')
+            .find({ query: { $or: [{ name: 'alpha' }, { name: 'alph*' }] }, paginate: false }),
+          wildcardError,
+        );
+      });
+
+      it('rejects a wildcard in $and', async () => {
+        await assert.rejects(
+          app.service('people').find({ query: { $and: [{ name: 'alph*' }] }, paginate: false }),
+          wildcardError,
+        );
+      });
+
+      it('rejects a wildcard inside a nested array', async () => {
+        await assert.rejects(findNames({ name: [['alph*']] }), wildcardError);
+      });
+
+      it('rejects a wildcard on the id field', async () => {
+        await assert.rejects(
+          app.service('people').find({ query: { uuid: 'qv-al*' }, paginate: false }),
+          wildcardError,
+        );
+      });
+
+      it('rejects a wildcard when redisQuery is called directly', () => {
+        const search = app.service('people').repository.search();
+
+        assert.throws(() => app.service('people').redisQuery(search, { name: 'alph*' }), wildcardError);
+      });
+
+      it('still finds the exact value', async () => {
+        assert.deepStrictEqual(await findNames({ name: 'alpha' }), ['alpha']);
+        assert.deepStrictEqual(await findNames({ name: { $ne: 'alpha' } }), ['alpha*', 'alphabet']);
+        assert.deepStrictEqual(await findNames({ $or: [{ name: 'alpha' }, { name: 'alphabet' }] }), [
+          'alpha',
+          'alphabet',
+        ]);
+      });
+
+      it('still finds exact values with every special character redis-om escapes', async () => {
+        const specials = [...',.<>{}[]"\':;!@#$%^&()-+=~/\\? '];
+
+        await app.service('people').create({ uuid: 'qv-a', name: 'a', age: 1, friends: [] });
+        await app.service('people').create({ uuid: 'qv-b', name: 'b', age: 1, friends: [] });
+        for (const [index, special] of specials.entries()) {
+          await app
+            .service('people')
+            .create({ uuid: `qv-special-${index}`, name: `a${special}b`, age: 1, friends: [] });
+        }
+
+        for (const special of specials) {
+          assert.deepStrictEqual(
+            await findNames({ name: `a${special}b` }),
+            [`a${special}b`],
+            `character ${special}`,
+          );
+          assert.deepStrictEqual(await findNames({ name: special }), [], `character ${special} alone`);
+        }
+      });
+
+      it('does not read | as an OR', async () => {
+        await app.service('people').create({ uuid: 'qv-a', name: 'a', age: 1, friends: [] });
+        await app.service('people').create({ uuid: 'qv-b', name: 'b', age: 1, friends: [] });
+
+        assert.deepStrictEqual(await findNames({ name: 'a|b' }), []);
+      });
+    });
+
+    describe('number fields', () => {
+      // Closes redis-om's parentheses, so the OR applies to the whole query
+      const breakout = '0 +inf])) | ((@age:[0';
+
+      it('rejects query syntax that would escape the other filters', async () => {
+        await assert.rejects(findNames({ name: 'alpha', age: { $gte: breakout } }), numberError);
+      });
+
+      for (const operator of ['$ne', '$lt', '$lte', '$gt', '$gte']) {
+        it(`rejects query syntax in ${operator}`, async () => {
+          await assert.rejects(findNames({ name: 'alpha', age: { [operator]: breakout } }), numberError);
+        });
+      }
+
+      it('rejects query syntax in an equality', async () => {
+        await assert.rejects(findNames({ name: 'alpha', age: breakout }), numberError);
+      });
+
+      for (const value of ['', ' ', 'abc', '1 2', '-inf', 'Infinity', 'NaN', true, null, [1, 2]]) {
+        it(`rejects ${JSON.stringify(value)}`, async () => {
+          await assert.rejects(findNames({ age: value }), numberError);
+        });
+      }
+
+      it('rejects an array in $in', async () => {
+        await assert.rejects(findNames({ age: { $in: [1, 2] } }), numberError);
+      });
+
+      it('rejects NaN and infinities', async () => {
+        for (const value of [NaN, Infinity, -Infinity]) {
+          await assert.rejects(findNames({ age: { $gt: value } }), numberError, String(value));
+        }
+      });
+
+      it('still accepts numbers and numeric strings', async () => {
+        assert.deepStrictEqual(await findNames({ age: 2 }), ['alphabet']);
+        assert.deepStrictEqual(await findNames({ age: '2' }), ['alphabet']);
+        assert.deepStrictEqual(await findNames({ age: { $gt: '1', $lt: '3' } }), ['alphabet']);
+        assert.deepStrictEqual(await findNames({ age: { $ne: 2 } }), ['alpha', 'alpha*']);
+        assert.deepStrictEqual(await findNames({ age: { $gte: 2.5 } }), ['alpha*']);
+      });
+    });
+
+    describe('boolean and date fields', () => {
+      type Member = { uuid: string; name: string; active: boolean; joinedAt: Date };
+
+      let members: RedisService<Member>;
+
+      const findMemberNames = async (query: Record<string, any>): Promise<string[]> => {
+        const result: any = await members._find({ query, paginate: false });
+
+        return result.map((member: Member) => member.name).sort();
+      };
+
+      before(() => {
+        members = new RedisService<Member>({
+          Model: redis,
+          id: 'uuid',
+          schema: new Schema('members', {
+            uuid: { type: 'string' },
+            name: { type: 'string' },
+            active: { type: 'boolean' },
+            joinedAt: { type: 'date' },
+          }),
+        });
+      });
+
+      beforeEach(async () => {
+        await members.repository.createIndex();
+        await members.create({
+          uuid: 'm-on',
+          name: 'on',
+          active: true,
+          joinedAt: new Date('2024-01-01T00:00:00Z'),
+        });
+        await members.create({
+          uuid: 'm-off',
+          name: 'off',
+          active: false,
+          joinedAt: new Date('2025-01-01T00:00:00Z'),
+        });
+      });
+
+      it('rejects query syntax in a boolean that would escape the other filters', async () => {
+        await assert.rejects(
+          findMemberNames({ name: 'on', active: 'true})) | ((@active:{false' }),
+          booleanError,
+        );
+      });
+
+      for (const value of ['yes', '1', 'TRUE', '', 1, null, [true]]) {
+        it(`rejects ${JSON.stringify(value)} for a boolean`, async () => {
+          await assert.rejects(findMemberNames({ active: value }), booleanError);
+        });
+      }
+
+      it('still accepts booleans and the strings true and false', async () => {
+        assert.deepStrictEqual(await findMemberNames({ active: true }), ['on']);
+        assert.deepStrictEqual(await findMemberNames({ active: false }), ['off']);
+        assert.deepStrictEqual(await findMemberNames({ active: 'true' }), ['on']);
+        assert.deepStrictEqual(await findMemberNames({ active: 'false' }), ['off']);
+        assert.deepStrictEqual(await findMemberNames({ active: { $ne: true } }), ['off']);
+      });
+
+      it('rejects query syntax in a date that would escape the other filters', async () => {
+        const breakout = ['0 +inf])) | ((@joinedAt:[0'];
+
+        await assert.rejects(findMemberNames({ name: 'on', joinedAt: { $gte: breakout } }), dateError);
+      });
+
+      it('rejects invalid dates, NaN and infinities', async () => {
+        for (const value of ['not a date', new Date('not a date'), NaN, Infinity, -Infinity]) {
+          await assert.rejects(findMemberNames({ joinedAt: { $gt: value } }), dateError, String(value));
+        }
+      });
+
+      it('still accepts dates, numbers and date strings', async () => {
+        const middle = new Date('2024-06-01T00:00:00Z');
+
+        assert.deepStrictEqual(await findMemberNames({ joinedAt: { $gt: middle } }), ['off']);
+        assert.deepStrictEqual(await findMemberNames({ joinedAt: { $gt: middle.toISOString() } }), ['off']);
+        assert.deepStrictEqual(await findMemberNames({ joinedAt: { $gt: middle.getTime() / 1000 } }), [
+          'off',
+        ]);
+      });
+    });
+
+    describe('ids in a get, patch, update or remove with a query', () => {
+      it('get does not match an id by prefix', async () => {
+        await assert.rejects(app.service('people').get('qv-alph*', { query: { name: 'alphabet' } }), {
+          name: 'NotFound',
+        });
+      });
+
+      it('patch does not change a record matched by prefix', async () => {
+        await assert.rejects(
+          app.service('people').patch('qv-alph*', { name: 'changed' }, { query: { name: 'alphabet' } }),
+          { name: 'NotFound' },
+        );
+
+        assert.strictEqual((await app.service('people').get('qv-alphabet')).name, 'alphabet');
+      });
+
+      it('update does not write a record when the id has a wildcard', async () => {
+        const data = { uuid: 'qv-alph*', name: 'changed', age: 9, friends: [] };
+
+        await assert.rejects(
+          app.service('people').update('qv-alph*', data, { query: { name: 'alphabet' } }),
+          wildcardError,
+        );
+
+        await assert.rejects(app.service('people').get('qv-alph*'), { name: 'NotFound' });
+        assert.strictEqual((await app.service('people').get('qv-alphabet')).name, 'alphabet');
+      });
+
+      it('remove does not match an id by prefix', async () => {
+        await assert.rejects(app.service('people').remove('qv-alph*', { query: { name: 'alphabet' } }), {
+          name: 'NotFound',
+        });
+
+        assert.strictEqual((await app.service('people').get('qv-alphabet')).name, 'alphabet');
+      });
+
+      it('still gets a record by exact id and query', async () => {
+        const person = await app.service('people').get('qv-alphabet', { query: { name: 'alphabet' } });
+
+        assert.strictEqual(person.name, 'alphabet');
+      });
+
+      it('still reads a record by key when its id has a * and there is no query', async () => {
+        await app.service('people').create({ uuid: 'qv-key*', name: 'key', age: 1, friends: [] });
+
+        assert.strictEqual((await app.service('people').get('qv-key*')).name, 'key');
+      });
+    });
+  });
 });

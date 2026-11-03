@@ -24,6 +24,19 @@ const METHODS = {
 };
 
 /**
+ * RediSearch reads `*` as a wildcard and redis-om does not escape it.
+ */
+const assertNoWildcard = (value: unknown): void => {
+  if (typeof value === 'string' && value.includes('*')) {
+    throw new BadRequest('Invalid query value: "*" is not allowed');
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach(assertNoWildcard);
+  }
+};
+
+/**
  * RedisAdapter class extends the AdapterBase class to provide a Redis-based
  * implementation for FeathersJS services.
  *
@@ -85,6 +98,55 @@ export class RedisAdapter<
   }
 
   /**
+   * Checks a query value against its field type before redis-om puts it in the query.
+   * redis-om escapes string values except for `*`, and writes number and boolean values as they are.
+   */
+  protected checkQueryValue(field: string | undefined, value: unknown): any {
+    const type = field ? this.options.schema?.fieldByName(field)?.type : undefined;
+
+    if (type === 'number' || type === 'number[]') {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+
+      if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) {
+        return Number(value);
+      }
+
+      throw new BadRequest('Invalid query value: expected a number');
+    }
+
+    if (type === 'boolean') {
+      if (typeof value === 'boolean' || value === 'true' || value === 'false') {
+        return value;
+      }
+
+      throw new BadRequest('Invalid query value: expected a boolean');
+    }
+
+    if (type === 'date') {
+      if (value instanceof Date && Number.isFinite(value.getTime())) {
+        return value;
+      }
+
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+
+      // redis-om parses date strings with new Date(value)
+      if (typeof value === 'string' && Number.isFinite(new Date(value).getTime())) {
+        return value;
+      }
+
+      throw new BadRequest('Invalid query value: expected a date');
+    }
+
+    assertNoWildcard(value);
+
+    return value;
+  }
+
+  /**
    * Function to create redis-om queries based on the FeathersJS query object.
    *
    * @param search - The Redis OM search instance.
@@ -130,19 +192,22 @@ export class RedisAdapter<
           this.redisQuery(search, value, key);
         } else {
           const method = METHODS[key as keyof typeof METHODS];
+          const checkedValue = this.checkQueryValue(column, value);
           // Check if the key is one of the feathers query methods ($ne, $in, $nin, $lt, $lte, $gt, $gte) except $or and $and which are handled above
           if (method) {
             /**
              * If the method is $ne, we need to use the `.not.equals` method and trying to use [method] will throw an error.
              */
             if (method === METHODS.$ne) {
-              search.where(column as Exclude<keyof Result, keyof EntityInternal>).not.equals(value);
+              search.where(column as Exclude<keyof Result, keyof EntityInternal>).not.equals(checkedValue);
             } else {
-              (search.where(column as Exclude<keyof Result, keyof EntityInternal>) as any)[method](value);
+              (search.where(column as Exclude<keyof Result, keyof EntityInternal>) as any)[method](
+                checkedValue,
+              );
             }
           } else {
             // If the method is not in the METHODS object, use the method as equals
-            search.where(column as Exclude<keyof Result, keyof EntityInternal>).equals(value);
+            search.where(column as Exclude<keyof Result, keyof EntityInternal>).equals(checkedValue);
           }
         }
       }
@@ -273,7 +338,10 @@ export class RedisAdapter<
       if (query && Object.keys(query).length > 0) {
         const search = this.repository.search();
         this.redisQuery(search, query);
-        search.and(idField as Exclude<keyof Result, keyof EntityInternal>).eq(id);
+        // With a query the id is part of the search, so it gets the same check as a query value
+        search
+          .and(idField as Exclude<keyof Result, keyof EntityInternal>)
+          .eq(this.checkQueryValue(idField, id));
         const results = await search.return.all();
         if (results.length === 0) {
           throw new NotFound(`No record found for id '${id}'`);
@@ -443,7 +511,10 @@ export class RedisAdapter<
       if (query && Object.keys(query).length > 0) {
         const search = this.repository.search();
         this.redisQuery(search, query);
-        search.and(idField as Exclude<keyof Result, keyof EntityInternal>).eq(id);
+        // With a query the id is part of the search, so it gets the same check as a query value
+        search
+          .and(idField as Exclude<keyof Result, keyof EntityInternal>)
+          .eq(this.checkQueryValue(idField, id));
         const results = await search.return.all();
         if (results.length === 0) {
           throw new NotFound(`No record found for id '${id}'`);
